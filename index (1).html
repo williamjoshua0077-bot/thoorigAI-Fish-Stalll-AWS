@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ThoorigAI Fish Stall</title>
+<style>
+body{font-family:system-ui,Arial;margin:0;background:#f3f8f4;color:#18352a}header{background:#0d654b;color:white;text-align:center;padding:20px}
+main{max-width:850px;margin:24px auto;padding:0 14px}section{background:white;padding:18px;border-radius:12px;margin-bottom:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}.fish{border:1px solid #d8e6dd;border-radius:8px;padding:12px}
+label{display:block;margin-top:12px;font-weight:600}input,select,button{box-sizing:border-box;width:100%;padding:10px;margin-top:5px;border:1px solid #bfd2c5;border-radius:7px;font:inherit}
+button{background:#0d654b;color:white;font-weight:700;cursor:pointer;margin-top:14px}#status{white-space:pre-wrap}
+</style></head>
+<body><header><h1>ThoorigAI Fish Stall</h1><p>Fish inventory and order tracker</p></header>
+<main>
+<section><h2>Available fish</h2><div id="inventory">Loading inventory…</div><button id="refresh">Refresh inventory</button></section>
+<section><h2>Place an order</h2><form id="orderForm">
+<label for="customerName">Customer name</label><input id="customerName" required maxlength="100">
+<label for="contact">Phone or email</label><input id="contact" required maxlength="120">
+<label for="fish">Choose fish</label><select id="fish" required></select>
+<label for="quantityKg">Quantity (kg)</label><input id="quantityKg" type="number" min="1" step="1" value="1" required>
+<label for="collectionTime">Collection time</label><select id="collectionTime"><option>Today evening</option><option>Tomorrow morning</option><option>Tomorrow evening</option></select>
+<p id="estimate">Estimated total: ₹0</p><button id="submitOrder">Submit order</button><p id="status" role="status"></p>
+</form></section></main>
+<script>
+const INVENTORY_URL="https://chtcaprz5c.execute-api.ap-south-1.amazonaws.com/inventory";
+const ORDER_URL="https://chtcaprz5c.execute-api.ap-south-1.amazonaws.com/dev/orders";
+let items=[];
+const inv=document.getElementById("inventory"), fish=document.getElementById("fish"), qty=document.getElementById("quantityKg");
+function nameOf(x){return x.fishName||x.name||x.itemName||"Fish"}
+function priceOf(x){return Number(x.pricePerKg??x.price??0)}
+function qtyOf(x){return Number(x.quantityKg??x.quantity??0)}
+function estimate(){let o=fish.selectedOptions[0];document.getElementById("estimate").textContent="Estimated total: ₹"+(Number(o?.dataset.price||0)*Number(qty.value||0)).toLocaleString("en-IN")}
+async function load(){
+ inv.textContent="Loading inventory…";
+ try{let r=await fetch(INVENTORY_URL);if(!r.ok)throw Error("HTTP "+r.status);let d=await r.json();
+ items=Array.isArray(d)?d:(d.items||d.inventory||[]);
+ inv.innerHTML="";fish.innerHTML="";
+ items.forEach(x=>{let card=document.createElement("div");card.className="fish";card.textContent=nameOf(x)+" — ₹"+priceOf(x)+"/kg; "+qtyOf(x)+" kg available";inv.append(card);
+ let o=document.createElement("option");o.value=x.itemId||x.id||nameOf(x);o.textContent=nameOf(x)+" — ₹"+priceOf(x)+"/kg";o.dataset.name=nameOf(x);o.dataset.price=priceOf(x);fish.append(o)});
+ if(!items.length)inv.textContent="No items returned. Check the API response format.";estimate()
+ }catch(e){inv.textContent="Could not load inventory: "+e.message}
+}
+document.getElementById("refresh").onclick=load;fish.onchange=estimate;qty.oninput=estimate;
+document.getElementById("orderForm").onsubmit=async e=>{e.preventDefault();let o=fish.selectedOptions[0];if(!o)return;
+ let b=document.getElementById("submitOrder"),s=document.getElementById("status");b.disabled=true;s.textContent="Submitting…";
+ try{let r=await fetch(ORDER_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({customerName:document.getElementById("customerName").value.trim(),contact:document.getElementById("contact").value.trim(),itemId:o.value,fishName:o.dataset.name,quantityKg:Number(qty.value),pricePerKg:Number(o.dataset.price),collectionTime:document.getElementById("collectionTime").value})});
+ let d=await r.json();if(!r.ok)throw Error(d.message||"HTTP "+r.status);s.textContent=JSON.stringify(d);await load()
+ }catch(err){s.textContent="Order submission failed: "+err.message}finally{b.disabled=false}
+};load();
+</script></body></html>
